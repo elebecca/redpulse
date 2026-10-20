@@ -17,12 +17,28 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:3001
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+
     depends_on:
       - backend
+
     ports:
       - "3000:3000"
+
     volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      # Source stays on the host so edits are visible without rebuilding.
+      - type: bind
+        source: ./frontend
+        target: /app
+      # Keep Linux dependencies and the Next.js cache out of the Windows bind.
+      - type: volume
+        target: /app/node_modules
+      - type: volume
+        target: /app/.next
+
+    # Webpack honors WATCHPACK_POLLING reliably for Windows bind mounts.
+    command: npm run dev -- --hostname 0.0.0.0 --webpack

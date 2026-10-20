@@ -14,10 +14,13 @@ import { KpiCardRevenue } from '@/components/dashboard/revenue-primary-card';
 
 export default async function DashboardPage() {
   const response = await fetch('http://backend:3001/dashboard/summary');
+  if (!response.ok) {
+    throw new Error('Failed to fetch dashboard summary');
+  }
   const summary = await response.json();
   return (
     <div>
-      <h1 className="text-2xl font-semibold">Dashboard</h1>
+      <h1 className="text-2xl font-semibold">Dashboard </h1>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <KpiCard {...activePlayersCard} value={summary.players.value} />
