@@ -21,6 +21,7 @@ All data used in this project is synthetic and created for development and portf
 
 ## Tech Stack
 
+
 ### Frontend
 
 - Next.js
