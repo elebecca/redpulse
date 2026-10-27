@@ -11,8 +11,11 @@ import {
 } from '@/data/dashboard';
 import { KpiCard } from '@/components/dashboard/kpi-card';
 import { KpiCardRevenue } from '@/components/dashboard/revenue-primary-card';
+import { auth } from '@/auth';
 
 export default async function DashboardPage() {
+  const session = await auth();
+  console.log(session);
   try {
     const response = await fetch('http://backend:3001/dashboard/summary');
 
