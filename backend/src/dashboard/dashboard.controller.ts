@@ -1,6 +1,6 @@
-import { Controller, Get, Req } from '@nestjs/common';
+import { Controller, Get, UseGuards } from '@nestjs/common';
 import { DashboardService } from './dashboard.service.js';
-import type { Request } from 'express';
+import { KeycloakAuthGuard } from '../auth/keycloak-auth.guard.js';
 
 //All routes in this class start with /dashboard
 @Controller('dashboard')
@@ -9,11 +9,11 @@ export class DashboardController {
   // "private readonly" means this service is available inside this class
   // and should not be reassigned.
   constructor(private readonly dashboardService: DashboardService) {}
-
+  @UseGuards(KeycloakAuthGuard)
   // This creates a GET endpoint:
   // GET /dashboard/summary
   @Get('summary')
-  getSummary(@Req() req: Request) {
+  getSummary() {
     return this.dashboardService.getSummary();
   }
 }

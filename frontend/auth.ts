@@ -8,7 +8,6 @@ const keycloakFetch: typeof fetch = (input, init) => {
   const request = input instanceof Request ? input : undefined;
   const url = new URL(request?.url ?? input.toString());
 
-  // Rewrite only server-side Keycloak requests made from inside Docker.
   if (url.hostname === 'localhost' && url.port === '8080') {
     url.hostname = 'keycloak';
   }
@@ -16,42 +15,85 @@ const keycloakFetch: typeof fetch = (input, init) => {
   return fetch(request ? new Request(url, request) : url, init);
 };
 
-// Configure Auth.js and export the helpers used by the app.
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
-    // Use Keycloak as the authentication provider.
     Keycloak({
       [customFetch]: keycloakFetch,
     }),
   ],
 
   callbacks: {
-    // Controls access to protected routes.
+    // Protect dashboard routes.
     authorized: async ({ auth, request }) => {
       const isLoggedIn = !!auth;
       const isDashboard = request.nextUrl.pathname.startsWith('/dashboard');
 
-      // Only authenticated users can access dashboard routes.
       if (isDashboard) {
         return isLoggedIn;
       }
 
-      // All other routes remain public.
       return true;
     },
 
-    // Runs when Auth.js creates or updates its JWT.
-    // Store the Keycloak access token so it can be used later.
+    // Store and refresh Keycloak tokens.
     jwt: async ({ token, account }) => {
+      // First login: save tokens returned by Keycloak.
       if (account?.access_token) {
         token.accessToken = account.access_token;
+        token.refreshToken = account.refresh_token;
+        token.accessTokenExpires = account.expires_at;
+
+        return token;
       }
 
-      return token;
+      // Access token is still valid.
+      if (
+        token.accessTokenExpires &&
+        Date.now() < token.accessTokenExpires * 1000
+      ) {
+        return token;
+      }
+
+      // We cannot refresh without a refresh token.
+      if (!token.refreshToken) {
+        return token;
+      }
+
+      // Access token expired: ask Keycloak for a new one.
+      const response = await keycloakFetch(
+        'http://localhost:8080/realms/red-pulse/protocol/openid-connect/token',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            client_id: process.env.AUTH_KEYCLOAK_ID!,
+            client_secret: process.env.AUTH_KEYCLOAK_SECRET!,
+            grant_type: 'refresh_token',
+            refresh_token: token.refreshToken,
+          }),
+        },
+      );
+
+      const refreshedTokens = await response.json();
+
+      // If refresh fails, keep the existing token for now.
+      if (!response.ok) {
+        return token;
+      }
+
+      // Save the newly issued access token and expiry.
+      return {
+        ...token,
+        accessToken: refreshedTokens.access_token,
+        accessTokenExpires:
+          Math.floor(Date.now() / 1000) + refreshedTokens.expires_in,
+        refreshToken: refreshedTokens.refresh_token ?? token.refreshToken,
+      };
     },
 
-    // Copies the stored access token into the session object.
-    // This makes it available through auth().
+    // Expose the access token through auth().
     session: async ({ session, token }) => {
       session.accessToken = token.accessToken as string;
 
