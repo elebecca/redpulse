@@ -15,10 +15,16 @@ import { auth } from '@/auth';
 
 export default async function DashboardPage() {
   const session = await auth();
-  console.log(session);
-  try {
-    const response = await fetch('http://backend:3001/dashboard/summary');
 
+  if (!session?.accessToken) {
+    return <p>Unauthorized.</p>;
+  }
+  try {
+    const response = await fetch('http://backend:3001/dashboard/summary', {
+      headers: {
+        Authorization: `Bearer ${session.accessToken}`,
+      },
+    });
     if (!response.ok) {
       return <p>Dashboard data is currently unavailable.</p>;
     }
