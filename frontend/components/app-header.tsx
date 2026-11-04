@@ -1,22 +1,22 @@
-"use client";
+'use client';
 
-import { Bell, ChevronDown } from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Bell, ChevronDown } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from '@/components/ui/dropdown-menu';
 
-import { DateRangePicker } from "./date-range-picker";
+import { DateRangePicker } from './date-range-picker';
+import { signOut } from 'next-auth/react';
 
 export function AppHeader() {
   return (
     <header className="flex h-16 items-center border-b border-white/10 bg-[#0B1726] px-6 text-white">
       <div className="ml-auto flex items-center gap-3">
-
         <DateRangePicker />
 
         <DropdownMenu>
@@ -60,12 +60,28 @@ export function AppHeader() {
 
           <DropdownMenuContent align="end">
             <DropdownMenuItem>Settings</DropdownMenuItem>
-            <DropdownMenuItem>Log out</DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={async () => {
+                await signOut({ redirect: false });
+
+                const logoutUrl = new URL(
+                  'http://localhost:8080/realms/red-pulse/protocol/openid-connect/logout',
+                );
+
+                logoutUrl.searchParams.set('client_id', 'red-pulse-frontend');
+                logoutUrl.searchParams.set(
+                  'post_logout_redirect_uri',
+                  'http://localhost:3000/',
+                );
+
+                window.location.href = logoutUrl.toString();
+              }}
+            >
+              Log out
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
     </header>
   );
 }
-
-
