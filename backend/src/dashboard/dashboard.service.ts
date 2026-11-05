@@ -23,6 +23,17 @@ export class DashboardService {
       },
     });
   }
+  async getRegistrations(startDate: Date, endDate: Date) {
+    return this.prisma.players.count({
+      where: {
+        is_test: false,
+        registration_at: {
+          gte: startDate,
+          lt: endDate,
+        },
+      },
+    });
+  }
   async getSummary() {
     // Define the default dashboard period.
     // startOfDay = today at 00:00
@@ -79,8 +90,13 @@ export class DashboardService {
       thirtyDaysAgo,
       startOfDay,
     );
-    console.log('Active players:', activePlayers);
-
+    // REGISTRATIONS
+    // Count non-test players who registered during the selected period.
+    const registrations = await this.getRegistrations(
+      thirtyDaysAgo,
+      startOfDay,
+    );
+    //console.log('Registrations:', registrations);
     // DEPOSITS
     // Sum all deposit amounts.
     const deposits = await this.prisma.deposits.aggregate({
@@ -241,6 +257,9 @@ export class DashboardService {
       },
       retention: {
         value: retention,
+      },
+      registrations: {
+        value: registrations,
       },
     };
   }
