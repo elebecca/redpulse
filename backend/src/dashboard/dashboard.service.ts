@@ -6,6 +6,23 @@ export class DashboardService {
   // PrismaService gives this service access to the PostgreSQL database.
   constructor(private readonly prisma: PrismaService) {}
 
+  async getActivePlayers(startDate: Date, endDate: Date) {
+    return this.prisma.players.count({
+      where: {
+        is_test: false,
+        bets: {
+          some: {
+            status: 'settled',
+            is_real_money: true,
+            placed_at: {
+              gte: startDate,
+              lt: endDate,
+            },
+          },
+        },
+      },
+    });
+  }
   async getSummary() {
     // Define the default dashboard period.
     // startOfDay = today at 00:00
@@ -58,20 +75,11 @@ export class DashboardService {
 
     // PLAYERS
     // Count active non-test player accounts.
-    const activePlayers = await this.prisma.players.count({
-      where: {
-        is_test: false,
-        bets: {
-          some: {
-            status: 'settled',
-            is_real_money: true,
-            placed_at: {
-              gte: thirtyDaysAgo,
-            },
-          },
-        },
-      },
-    });
+    const activePlayers = await this.getActivePlayers(
+      thirtyDaysAgo,
+      startOfDay,
+    );
+    console.log('Active players:', activePlayers);
 
     // DEPOSITS
     // Sum all deposit amounts.
