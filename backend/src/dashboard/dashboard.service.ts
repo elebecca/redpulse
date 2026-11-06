@@ -34,6 +34,17 @@ export class DashboardService {
       },
     });
   }
+  async getFirstTimeDepositors(startDate: Date, endDate: Date) {
+    return this.prisma.players.count({
+      where: {
+        is_test: false,
+        first_deposit_at: {
+          gte: startDate,
+          lt: endDate,
+        },
+      },
+    });
+  }
   async getSummary() {
     // Define the default dashboard period.
     // startOfDay = today at 00:00
