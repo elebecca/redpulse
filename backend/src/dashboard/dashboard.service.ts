@@ -3,9 +3,28 @@ import { PrismaService } from '../prisma/prisma.service.js';
 
 @Injectable()
 export class DashboardService {
-  // PrismaService gives this service access to the PostgreSQL database.
+  // PrismaService gives this service access to PostgreSQL.
   constructor(private readonly prisma: PrismaService) {}
 
+  // Calculate the date range immediately before the selected period.
+  //
+  // Example:
+  // current period: 1 Oct -> 31 Oct
+  // previous period: 1 Sep -> 30 Sep
+  getPreviousPeriod(startDate: Date, endDate: Date) {
+    const periodLength = endDate.getTime() - startDate.getTime();
+
+    const previousEndDate = new Date(startDate);
+    const previousStartDate = new Date(startDate.getTime() - periodLength);
+
+    return {
+      previousStartDate,
+      previousEndDate,
+    };
+  }
+
+  // Count non-test players who placed at least one
+  // settled real-money bet during the selected period.
   async getActivePlayers(startDate: Date, endDate: Date) {
     return this.prisma.players.count({
       where: {
@@ -23,6 +42,9 @@ export class DashboardService {
       },
     });
   }
+
+  // Count non-test players whose registration happened
+  // during the selected period.
   async getRegistrations(startDate: Date, endDate: Date) {
     return this.prisma.players.count({
       where: {
@@ -34,6 +56,9 @@ export class DashboardService {
       },
     });
   }
+
+  // Count non-test players whose first deposit happened
+  // during the selected period.
   async getFirstTimeDepositors(startDate: Date, endDate: Date) {
     return this.prisma.players.count({
       where: {
@@ -45,24 +70,36 @@ export class DashboardService {
       },
     });
   }
+
   async getSummary() {
-    // Define the default dashboard period.
-    // startOfDay = today at 00:00
-    // thirtyDaysAgo = 30 days before today
+    // Define the current dashboard period.
+    //
+    // NOTE:
+    // This is currently 60 days because the MVP uses static synthetic data.
+    // Later this should come from the selected dashboard date range.
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
-    const thirtyDaysAgo = new Date(startOfDay);
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 60);
+    const periodStart = new Date(startOfDay);
+    periodStart.setDate(periodStart.getDate() - 60);
 
+    // Work out the period immediately before the current one.
+    const { previousStartDate, previousEndDate } = this.getPreviousPeriod(
+      periodStart,
+      startOfDay,
+    );
+
+    // ------------------------------------------------------------
     // REVENUE
-    // GGR = total settled real-money stakes - total payouts.
+    // ------------------------------------------------------------
+
+    // Sum settled real-money stakes.
     const revenueStakeAmount = await this.prisma.bets.aggregate({
       where: {
         status: 'settled',
         is_real_money: true,
         settled_at: {
-          gte: thirtyDaysAgo,
+          gte: periodStart,
         },
       },
       _sum: {
@@ -70,12 +107,13 @@ export class DashboardService {
       },
     });
 
+    // Sum settled real-money payouts.
     const payoutAmount = await this.prisma.bets.aggregate({
       where: {
         status: 'settled',
         is_real_money: true,
         settled_at: {
-          gte: thirtyDaysAgo,
+          gte: periodStart,
         },
       },
       _sum: {
@@ -95,25 +133,51 @@ export class DashboardService {
       (revenueStakeAmountValue - payoutAmountValue).toFixed(2),
     );
 
-    // PLAYERS
-    // Count active non-test player accounts.
-    const activePlayers = await this.getActivePlayers(
-      thirtyDaysAgo,
+    // ------------------------------------------------------------
+    // PLAYERS - CURRENT PERIOD
+    // ------------------------------------------------------------
+
+    // Active players in the current selected period.
+    const activePlayers = await this.getActivePlayers(periodStart, startOfDay);
+
+    // Registrations in the current selected period.
+    const registrations = await this.getRegistrations(periodStart, startOfDay);
+
+    // First-time depositors in the current selected period.
+    const firstTimeDepositors = await this.getFirstTimeDepositors(
+      periodStart,
       startOfDay,
     );
-    // REGISTRATIONS
-    // Count non-test players who registered during the selected period.
-    const registrations = await this.getRegistrations(
-      thirtyDaysAgo,
-      startOfDay,
+
+    // ------------------------------------------------------------
+    // PLAYERS - PREVIOUS PERIOD
+    // ------------------------------------------------------------
+
+    // Use the same business definitions,
+    // but apply them to the previous period.
+    const previousActivePlayers = await this.getActivePlayers(
+      previousStartDate,
+      previousEndDate,
     );
-    //console.log('Registrations:', registrations);
+
+    const previousRegistrations = await this.getRegistrations(
+      previousStartDate,
+      previousEndDate,
+    );
+
+    const previousFirstTimeDepositors = await this.getFirstTimeDepositors(
+      previousStartDate,
+      previousEndDate,
+    );
+
+    // ------------------------------------------------------------
     // DEPOSITS
-    // Sum all deposit amounts.
+    // ------------------------------------------------------------
+
     const deposits = await this.prisma.deposits.aggregate({
       where: {
         processed_at: {
-          gte: thirtyDaysAgo,
+          gte: periodStart,
         },
       },
       _sum: {
@@ -123,7 +187,10 @@ export class DashboardService {
 
     const depositsValue = Number(deposits._sum.amount ?? 0);
 
+    // ------------------------------------------------------------
     // CONVERSION RATE
+    // ------------------------------------------------------------
+
     // Registered players = all non-test players.
     const registeredPlayers = await this.prisma.players.count({
       where: {
@@ -141,18 +208,20 @@ export class DashboardService {
       },
     });
 
-    // Avoid division by zero when calculating percentage.
+    // Avoid division by zero.
     const conversionRate =
       registeredPlayers === 0
         ? 0
         : Number(((convertedPlayers / registeredPlayers) * 100).toFixed(1));
 
+    // ------------------------------------------------------------
     // BONUS
-    // Sum the total cost of bonuses issued.
+    // ------------------------------------------------------------
+
     const bonusCost = await this.prisma.bonuses.aggregate({
       where: {
         issued_at: {
-          gte: thirtyDaysAgo,
+          gte: periodStart,
         },
       },
       _sum: {
@@ -162,8 +231,9 @@ export class DashboardService {
 
     const bonusCostValue = Number(bonusCost._sum.bonus_cost_amount ?? 0);
 
+    // ------------------------------------------------------------
     // TECHNICAL
-    // Calculate average availability percentage.
+    // ------------------------------------------------------------
 
     const systemUptime = await this.prisma.technical_metrics.aggregate({
       _avg: {
@@ -172,15 +242,17 @@ export class DashboardService {
       where: {
         metric_type: 'availability',
         measured_at: {
-          gte: thirtyDaysAgo,
+          gte: periodStart,
         },
       },
     });
 
     const systemUptimeValue = Number((systemUptime._avg.value ?? 0).toFixed(1));
 
+    // ------------------------------------------------------------
     // GEOGRAPHY
-    // Get unique regions from the markets table.
+    // ------------------------------------------------------------
+
     const regions = await this.prisma.markets.findMany({
       distinct: ['region'],
       select: {
@@ -190,36 +262,37 @@ export class DashboardService {
 
     const regionsValue = regions.length;
 
+    // ------------------------------------------------------------
     // GAMES
-    // Count settled real-money bets as the headline games activity metric.
+    // ------------------------------------------------------------
 
     const gamesActivity = await this.prisma.bets.count({
       where: {
         status: 'settled',
         is_real_money: true,
         placed_at: {
-          gte: thirtyDaysAgo,
+          gte: periodStart,
         },
       },
     });
 
+    // ------------------------------------------------------------
     // RETENTION
-    // Eligible players are non-test players who registered at least 30 days ago.
+    // ------------------------------------------------------------
+
     const eligiblePlayers = await this.prisma.players.count({
       where: {
         is_test: false,
         registration_at: {
-          lte: thirtyDaysAgo,
+          lte: periodStart,
         },
       },
     });
 
-    // Retained players are eligible players who had at least one
-    // settled real-money bet during the last 30 days.
     const retainedPlayers = await this.prisma.players.count({
       where: {
         registration_at: {
-          lte: thirtyDaysAgo,
+          lte: periodStart,
         },
         is_test: false,
         bets: {
@@ -227,50 +300,77 @@ export class DashboardService {
             status: 'settled',
             is_real_money: true,
             placed_at: {
-              gte: thirtyDaysAgo,
+              gte: periodStart,
             },
           },
         },
       },
     });
 
-    // Retention percentage.
     const retention =
       eligiblePlayers === 0
         ? 0
         : Number(((retainedPlayers / eligiblePlayers) * 100).toFixed(1));
 
-    // API response returned by GET /dashboard/summary.
+    console.log({
+      activePlayers,
+      previousActivePlayers,
+      registrations,
+      previousRegistrations,
+      firstTimeDepositors,
+      previousFirstTimeDepositors,
+    });
+    // ------------------------------------------------------------
+    // API RESPONSE
+    // ------------------------------------------------------------
+
     return {
       revenue: {
         value: ggr,
       },
+
+      // Current and previous-period Players KPIs.
       players: {
         value: activePlayers,
+        previousValue: previousActivePlayers,
       },
+
+      registrations: {
+        value: registrations,
+        previousValue: previousRegistrations,
+      },
+
+      firstTimeDepositors: {
+        value: firstTimeDepositors,
+        previousValue: previousFirstTimeDepositors,
+      },
+
       deposits: {
         value: depositsValue,
       },
+
       conversionRate: {
         value: conversionRate,
       },
+
       bonus: {
         value: bonusCostValue,
       },
+
       technical: {
         value: systemUptimeValue,
       },
+
       geography: {
         value: regionsValue,
       },
+
       games: {
         value: gamesActivity,
       },
+
       retention: {
         value: retention,
-      },
-      registrations: {
-        value: registrations,
       },
     };
   }
