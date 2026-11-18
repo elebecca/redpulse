@@ -55,7 +55,63 @@ export class PlayersService {
       },
     });
   }
+  async getDailyActivePlayers(startDate: Date, endDate: Date) {
+    const dailyValues = [];
 
+    let day = new Date(startDate);
+
+    while (day < endDate) {
+      const tomorrow = new Date(day);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      const activePlayers = await this.getActivePlayers(day, tomorrow);
+
+      dailyValues.push({
+        date: day.toISOString().slice(0, 10),
+        value: activePlayers,
+      });
+
+      day = tomorrow;
+    }
+
+    return dailyValues;
+  }
+  async getDailyRegistrations(startDate: Date, endDate: Date) {
+    const result = [];
+    let day = new Date(startDate);
+
+    while (day < endDate) {
+      const tomorrow = new Date(day);
+      tomorrow.setDate(day.getDate() + 1);
+
+      result.push({
+        date: day.toISOString().slice(0, 10),
+        value: await this.getRegistrations(day, tomorrow),
+      });
+
+      day = tomorrow;
+    }
+
+    return result;
+  }
+  async getDailyFirstTimeDepositors(startDate: Date, endDate: Date) {
+    const result = [];
+    let day = new Date(startDate);
+
+    while (day < endDate) {
+      const tomorrow = new Date(day);
+      tomorrow.setDate(day.getDate() + 1);
+
+      result.push({
+        date: day.toISOString().slice(0, 10),
+        value: await this.getFirstTimeDepositors(day, tomorrow),
+      });
+
+      day = tomorrow;
+    }
+
+    return result;
+  }
   async getSummary() {
     const endDate = new Date();
     endDate.setHours(0, 0, 0, 0);
